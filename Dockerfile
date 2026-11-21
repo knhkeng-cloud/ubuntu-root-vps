@@ -3,35 +3,39 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# ==========================================
-# SYSTEM UPDATE
-# ==========================================
+# =====================================
+# UPDATE UBUNTU
+# =====================================
 
 RUN apt-get update && apt-get upgrade -y
 
-# ==========================================
-# ESSENTIAL PACKAGES
-# ==========================================
+# =====================================
+# ESSENTIAL UTILITIES
+# =====================================
 
 RUN apt-get install -y \
     ca-certificates \
     curl \
     wget \
     git \
+    git-lfs \
     gnupg \
-    lsb-release \
+    sudo \
     software-properties-common \
     apt-transport-https \
     locales \
     tzdata \
-    sudo \
     bash \
     zsh \
-    fish
+    fish \
+    jq \
+    file \
+    less \
+    man-db
 
-# ==========================================
-# PYTHON DEVELOPMENT
-# ==========================================
+# =====================================
+# PYTHON
+# =====================================
 
 RUN apt-get install -y \
     python3 \
@@ -43,9 +47,9 @@ RUN apt-get install -y \
     python3-setuptools \
     python3-wheel
 
-# ==========================================
-# COMPILERS AND BUILD TOOLS
-# ==========================================
+# =====================================
+# C / C++ DEVELOPMENT
+# =====================================
 
 RUN apt-get install -y \
     build-essential \
@@ -60,33 +64,33 @@ RUN apt-get install -y \
     automake \
     libtool
 
-# ==========================================
-# JAVA DEVELOPMENT
-# ==========================================
+# =====================================
+# JAVA
+# =====================================
 
 RUN apt-get install -y \
     default-jdk \
     default-jre
 
-# ==========================================
-# NODE.JS DEVELOPMENT
-# ==========================================
+# =====================================
+# NODE.JS
+# =====================================
 
 RUN apt-get install -y \
     nodejs \
     npm
 
-# ==========================================
+# =====================================
 # SSH SERVER
-# ==========================================
+# =====================================
 
 RUN apt-get install -y \
     openssh-server \
     openssl
 
-# ==========================================
-# TERMINAL UTILITIES
-# ==========================================
+# =====================================
+# TERMINAL TOOLS
+# =====================================
 
 RUN apt-get install -y \
     nano \
@@ -98,13 +102,14 @@ RUN apt-get install -y \
     btop \
     tree \
     ncdu \
-    fastfetch \
     less \
-    man-db
+    procps \
+    psmisc \
+    lsof
 
-# ==========================================
-# NETWORKING TOOLS
-# ==========================================
+# =====================================
+# NETWORK TOOLS
+# =====================================
 
 RUN apt-get install -y \
     net-tools \
@@ -115,13 +120,12 @@ RUN apt-get install -y \
     socat \
     netcat-openbsd \
     rsync \
-    lsof \
     whois \
     mtr-tiny
 
-# ==========================================
-# WEB HOSTING TOOLS
-# ==========================================
+# =====================================
+# WEB SERVER TOOLS
+# =====================================
 
 RUN apt-get install -y \
     nginx \
@@ -132,18 +136,18 @@ RUN apt-get install -y \
     php-xml \
     php-zip
 
-# ==========================================
+# =====================================
 # DATABASE CLIENTS
-# ==========================================
+# =====================================
 
 RUN apt-get install -y \
     sqlite3 \
     postgresql-client \
     redis-tools
 
-# ==========================================
-# FILE MANAGEMENT
-# ==========================================
+# =====================================
+# ARCHIVE UTILITIES
+# =====================================
 
 RUN apt-get install -y \
     zip \
@@ -151,40 +155,35 @@ RUN apt-get install -y \
     p7zip-full \
     tar \
     gzip \
-    xz-utils \
-    file \
-    jq
+    xz-utils
 
-# ==========================================
-# MEDIA TOOLS
-# ==========================================
+# =====================================
+# MEDIA UTILITIES
+# =====================================
 
 RUN apt-get install -y \
     ffmpeg
 
-# ==========================================
-# SYSTEM UTILITIES
-# ==========================================
+# =====================================
+# EXTRA UTILITIES
+# =====================================
 
 RUN apt-get install -y \
     cron \
     logrotate \
-    procps \
-    psmisc \
     strace \
-    tini \
-    git-lfs
+    tini
 
-# ==========================================
-# CLEANUP
-# ==========================================
+# =====================================
+# CLEAN PACKAGE CACHE
+# =====================================
 
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# ==========================================
+# =====================================
 # SSH CONFIGURATION
-# ==========================================
+# =====================================
 
 RUN mkdir -p /var/run/sshd /root/.ssh && \
     chmod 700 /root/.ssh
@@ -193,74 +192,54 @@ RUN printf '%s\n' \
     'Port 22' \
     'AddressFamily any' \
     'ListenAddress 0.0.0.0' \
-    'PermitRootLogin yes' \
-    'PasswordAuthentication yes' \
+    'PermitRootLogin prohibit-password' \
+    'PasswordAuthentication no' \
     'PubkeyAuthentication yes' \
-    'UsePAM no' \
     'AllowTcpForwarding yes' \
     'X11Forwarding no' \
     'ClientAliveInterval 60' \
     'ClientAliveCountMax 3' \
     > /etc/ssh/sshd_config
 
-# ==========================================
+# =====================================
 # VPS STARTUP SCRIPT
-# ==========================================
+# =====================================
 
 RUN cat > /usr/local/bin/start-vps <<'EOF'
 #!/bin/bash
 set -e
 
 echo "=================================="
-echo "       UBUNTU ROOT VPS"
+echo "       UBUNTU 24.04 VPS"
 echo "=================================="
 
-if [ -z "${ROOT_PASSWORD:-}" ]; then
-    echo "ERROR: ROOT_PASSWORD is missing."
+mkdir -p /var/run/sshd /root/.ssh
+chmod 700 /root/.ssh
+
+if [ -z "${SSH_PUBLIC_KEY:-}" ]; then
+    echo "ERROR: SSH_PUBLIC_KEY is required."
     exit 1
 fi
 
-# Configure root password
-printf 'root:%s\n' "$ROOT_PASSWORD" | chpasswd
+printf '%s\n' "$SSH_PUBLIC_KEY" > /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
 
-# Optional SSH public key
-if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
-    mkdir -p /root/.ssh
-    chmod 700 /root/.ssh
-    printf '%s\n' "$SSH_PUBLIC_KEY" >> /root/.ssh/authorized_keys
-    chmod 600 /root/.ssh/authorized_keys
-fi
-
-# Generate SSH host keys
 ssh-keygen -A
 
-# Validate SSH configuration
 /usr/sbin/sshd -t
 
-echo "Ubuntu: 24.04"
 echo "Python: $(python3 --version)"
 echo "Node: $(node --version)"
 echo "NPM: $(npm --version)"
 echo "Git: $(git --version)"
-echo "Java: $(java -version 2>&1 | head -n 1)"
 
-echo "=================================="
-echo "Starting SSH server..."
-echo "=================================="
+echo "Ubuntu VPS is starting..."
 
 exec /usr/sbin/sshd -D -e
 EOF
 
 RUN chmod +x /usr/local/bin/start-vps
 
-# ==========================================
-# SSH PORT
-# ==========================================
-
 EXPOSE 22
 
-# ==========================================
-# START VPS
-# ==========================================
-
-ENTRYPOINT ["/usr/local/bin/start-vps"]
+CMD ["/usr/local/bin/start-vps"]
